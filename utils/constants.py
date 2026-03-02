@@ -13,10 +13,13 @@ SERVICE_CHARGE_RATE = 0.05
 TABLE_SPACING            = 16     # px gap between table cards in floor grid
 KITCHEN_REFRESH_INTERVAL = 15000  # ms — auto-refresh kitchen display every 15 s
 SIDEBAR_WIDTH            = 220    # px — fixed sidebar width
+TABLE_WIDTH = 160
+TABLE_HEIGHT = 140
 
 # ── Responsive breakpoints ─────────────────────────────────────────────────────
 BREAKPOINT_SMALL  = 900
 BREAKPOINT_MEDIUM = 1200
+BREAKPOINT_LARGE = 1440
 
 # ── Colours ────────────────────────────────────────────────────────────────────
 DARK     = "#0F1117"

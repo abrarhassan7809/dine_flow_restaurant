@@ -45,6 +45,8 @@ class FloorView(QWidget):
         self.scroll_area.setWidget(self.floor_container)
         layout.addWidget(self.scroll_area)
 
+        self.refresh()
+
     def _create_header(self):
         header = QHBoxLayout()
 

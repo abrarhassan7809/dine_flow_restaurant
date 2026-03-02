@@ -39,7 +39,7 @@ class TableCard(QFrame):
         self.capacity = capacity
         self.status = status
         self.order_info = order_info
-        self.setFixedSize(160, 140)
+        self.setFixedSize(TABLE_WIDTH, TABLE_HEIGHT)
         self.setCursor(Qt.PointingHandCursor)
         self._build()
 

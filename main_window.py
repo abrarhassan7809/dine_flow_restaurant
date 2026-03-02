@@ -4,10 +4,13 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
 from PySide6.QtCore import Qt, QTimer, QDateTime
 from PySide6.QtGui import QResizeEvent
 from views.floor_view import FloorView
+from views.inventory_view import InventoryView
 from views.order_view import OrderView
 from views.kitchen_view import KitchenView
 from views.reports_view import ReportsView
 from views.menu_manager import MenuManager
+from views.reservations_view import ReservationsView
+from views.staff_view import StaffView
 from views.table_manager import TableManager
 from utils.constants import *
 
@@ -175,9 +178,9 @@ class MainWindow(QMainWindow):
             3: ReportsView(),
             4: MenuManager(),
             5: TableManager(),
-            6: self._placeholder("📅  Reservations"),
-            7: self._placeholder("📦  Inventory"),
-            8: self._placeholder("👥  Staff"),
+            6: ReservationsView(),
+            7: InventoryView(),
+            8: StaffView(),
         }
         for view in self.views.values():
             self.content_stack.addWidget(view)
