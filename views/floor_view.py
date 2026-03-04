@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
                                QGridLayout, QLabel, QPushButton, QFrame)
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QDateTime
 from database.connection import get_db
 from widgets.cards import TableCard, Badge
 from widgets.buttons import GhostButton
@@ -65,6 +65,10 @@ class FloorView(QWidget):
             badge = Badge(status.capitalize(), color)
             legend.addWidget(badge)
 
+        # Add reservation to legend
+        res_badge = Badge("Reserved", BLUE)
+        legend.addWidget(res_badge)
+
         header.addLayout(legend)
 
         # Refresh button
@@ -75,7 +79,7 @@ class FloorView(QWidget):
         return header
 
     def refresh(self):
-        """Refresh the floor plan display"""
+        """Refresh the floor plan display with orders and reservations"""
         # Clear existing cards
         while self.floor_layout.count():
             item = self.floor_layout.takeAt(0)
@@ -99,6 +103,23 @@ class FloorView(QWidget):
                                      GROUP BY o.id
                                      ORDER BY o.id DESC
                                      """).fetchall()
+
+        # Get today's active reservations (confirmed or pending)
+        today = QDateTime.currentDateTime().toString("yyyy-MM-dd")
+        active_reservations = conn.execute("""
+                                           SELECT r.table_id,
+                                                  r.id,
+                                                  r.customer_name,
+                                                  r.party_size,
+                                                  r.reservation_time,
+                                                  r.status
+                                           FROM reservations r
+                                           WHERE DATE (r.reservation_time) = DATE (?)
+                                             AND r.status IN ('confirmed'
+                                               , 'pending')
+                                           ORDER BY r.reservation_time
+                                           """, (today,)).fetchall()
+
         conn.close()
 
         # Create order map
@@ -112,6 +133,20 @@ class FloorView(QWidget):
                     'status': order['status']
                 }
 
+        # Create reservation map
+        reservation_map = {}
+        for res in active_reservations:
+            if res['table_id']:  # Only if table is assigned
+                res_time = QDateTime.fromString(res['reservation_time'], Qt.ISODate)
+                time_str = res_time.toString("hh:mm AP")
+                reservation_map[res['table_id']] = {
+                    'id': res['id'],
+                    'customer': res['customer_name'],
+                    'party': res['party_size'],
+                    'time': time_str,
+                    'status': res['status']
+                }
+
         # Add tables to grid
         cols = 4
         for idx, table in enumerate(tables):
@@ -120,7 +155,8 @@ class FloorView(QWidget):
                 table.number,
                 table.capacity,
                 table.status,
-                order_map.get(table.id)
+                order_map.get(table.id),
+                reservation_map.get(table.id)
             )
             card.clicked.connect(lambda tid=table.id: self.table_selected.emit(tid))
 
@@ -131,7 +167,6 @@ class FloorView(QWidget):
     def handle_resize(self, width):
         """Handle window resize for responsive layout"""
         if width < BREAKPOINT_SMALL:
-            # For small screens, show fewer columns
             cols = 3
         elif width < BREAKPOINT_MEDIUM:
             cols = 4
@@ -147,7 +182,7 @@ class FloorView(QWidget):
 
         # Clear and re-add with new column count
         while self.floor_layout.count():
-            item = self.floor_layout.takeAt(0)
+            self.floor_layout.takeAt(0)
 
         for idx, card in enumerate(cards):
             row = idx // cols

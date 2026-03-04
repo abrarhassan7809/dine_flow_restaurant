@@ -32,19 +32,24 @@ class TableCard(QFrame):
 
     clicked = Signal(int)
 
-    def __init__(self, table_id, number, capacity, status, order_info=None):
+    def __init__(self, table_id, number, capacity, status, order_info=None, reservation_info=None):
         super().__init__()
         self.table_id = table_id
         self.number = number
         self.capacity = capacity
         self.status = status
         self.order_info = order_info
+        self.reservation_info = reservation_info
         self.setFixedSize(TABLE_WIDTH, TABLE_HEIGHT)
         self.setCursor(Qt.PointingHandCursor)
         self._build()
 
     def _build(self):
-        color = STATUS_COLORS.get(self.status, TEXT2)
+        if self.reservation_info:
+            color = BLUE  # Reserved tables have blue border
+        else:
+            color = STATUS_COLORS.get(self.status, TEXT2)
+
         self.setStyleSheet(f"""
             QFrame {{
                 background: {SURFACE};
@@ -73,9 +78,29 @@ class TableCard(QFrame):
         cap_lbl.setAlignment(Qt.AlignCenter)
         layout.addWidget(cap_lbl)
 
-        # Status badge
-        badge = Badge(self.status.upper(), color)
-        layout.addWidget(badge)
+        # Show reservation info if exists
+        if self.reservation_info:
+            # Reservation badge
+            res_badge = Badge(f"RESERVED {self.reservation_info['time']}", BLUE)
+            layout.addWidget(res_badge)
+
+            # Customer info
+            customer_text = f"{self.reservation_info['customer']} · {self.reservation_info['party']} guests"
+            customer_lbl = QLabel(customer_text)
+            customer_lbl.setStyleSheet(f"font-size: 10px; color: {BLUE}; border: none; font-weight: 600;")
+            customer_lbl.setAlignment(Qt.AlignCenter)
+            layout.addWidget(customer_lbl)
+
+            # Small separator if there's also an order
+            if self.order_info:
+                sep = QFrame()
+                sep.setFixedHeight(1)
+                sep.setStyleSheet(f"background: {BORDER}; margin: 2px 0;")
+                layout.addWidget(sep)
+        else:
+            # Regular status badge if no reservation
+            status_badge = Badge(self.status.upper(), color)
+            layout.addWidget(status_badge)
 
         # Order info
         if self.order_info:
@@ -103,8 +128,8 @@ class Badge(QLabel):
                 background-color: {color}22;
                 color: {color};
                 border: 1px solid {color}55;
-                border-radius: 12px;
-                padding: 4px 12px;
+                border-radius: 4px;
+                padding: 4px 5px;
                 font-size: 11px;
                 font-weight: 700;
                 letter-spacing: 0.5px;

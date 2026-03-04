@@ -309,19 +309,19 @@ class InventoryView(QWidget):
         ])
 
         # Set column widths
-        self.inventory_table.setColumnWidth(0, 200)  # Item
+        self.inventory_table.setColumnWidth(0, 150)  # Item
         self.inventory_table.setColumnWidth(1, 120)  # Category
         self.inventory_table.setColumnWidth(2, 100)  # Quantity
-        self.inventory_table.setColumnWidth(3, 80)  # Unit
-        self.inventory_table.setColumnWidth(4, 100)  # Reorder Level
-        self.inventory_table.setColumnWidth(5, 100)  # Status
+        self.inventory_table.setColumnWidth(3, 100)  # Unit
+        self.inventory_table.setColumnWidth(4, 130)  # Reorder Level
+        self.inventory_table.setColumnWidth(5, 120)  # Status
         self.inventory_table.setColumnWidth(6, 150)  # Last Updated
-        self.inventory_table.setColumnWidth(7, 150)  # Actions
+        self.inventory_table.setColumnWidth(7, 100)  # Actions
 
         # Set stretch
         header = self.inventory_table.horizontalHeader()
         header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.Stretch)  # Item column stretches
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
 
         self.inventory_table.setStyleSheet(table_style())
         self.inventory_table.verticalHeader().setVisible(False)
@@ -561,7 +561,7 @@ class InventoryView(QWidget):
 
             # Adjust stock button
             adjust_btn = QPushButton("📊")
-            adjust_btn.setFixedSize(24, 24)
+            adjust_btn.setFixedSize(30, 30)
             adjust_btn.setToolTip("Adjust Stock")
             adjust_btn.setStyleSheet(f"""
                 QPushButton {{
@@ -584,7 +584,7 @@ class InventoryView(QWidget):
 
             # Edit button
             edit_btn = QPushButton("✎")
-            edit_btn.setFixedSize(24, 24)
+            edit_btn.setFixedSize(30, 30)
             edit_btn.setToolTip("Edit item")
             edit_btn.setStyleSheet(f"""
                 QPushButton {{
@@ -608,7 +608,7 @@ class InventoryView(QWidget):
             self.inventory_table.setCellWidget(row, 7, actions_widget)
 
             # Set row height
-            self.inventory_table.setRowHeight(row, 32)
+            self.inventory_table.setRowHeight(row, 50)
 
         # Update stats
         if self.stats_label:

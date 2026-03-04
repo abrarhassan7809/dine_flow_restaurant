@@ -382,24 +382,50 @@ class Reservation:
         return [cls(**dict(row)) for row in rows]
 
     @classmethod
-    def create(cls, **kwargs) -> 'Reservation':
+    def create(cls, customer_name, party_size, reservation_time, table_id=None,
+               customer_phone=None, customer_email=None, duration=120,
+               special_requests=None, status='confirmed'):
+        """Create a new reservation"""
         conn = get_db()
         c = conn.cursor()
 
-        fields = ', '.join(kwargs.keys())
-        placeholders = ', '.join(['?' for _ in kwargs])
-        values = list(kwargs.values())
-
-        c.execute(f"""
-            INSERT INTO reservations ({fields}, created_at)
-            VALUES ({placeholders}, CURRENT_TIMESTAMP)
-        """, values)
+        c.execute("""
+                  INSERT INTO reservations (table_id, customer_name, customer_phone, customer_email,
+                                            party_size, reservation_time, duration, status, special_requests)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  """, (
+                      table_id, customer_name, customer_phone, customer_email,
+                      party_size, reservation_time, duration, status, special_requests
+                  ))
 
         reservation_id = c.lastrowid
         conn.commit()
         conn.close()
 
         return cls.get_by_id(reservation_id)
+
+    @classmethod
+    def get_upcoming(cls, limit=20):
+        """Get upcoming reservations"""
+        conn = get_db()
+        rows = conn.execute("""
+                            SELECT r.*, t.number as table_number
+                            FROM reservations r
+                                     LEFT JOIN tables t ON r.table_id = t.id
+                            WHERE r.reservation_time >= datetime('now')
+                              AND r.status IN ('confirmed', 'pending')
+                            ORDER BY r.reservation_time LIMIT ?
+                            """, (limit,)).fetchall()
+        conn.close()
+        return [cls(**dict(row)) for row in rows]
+
+    def cancel(self):
+        """Cancel this reservation"""
+        return self.update_status('cancelled')
+
+    def complete(self):
+        """Mark reservation as completed"""
+        return self.update_status('completed')
 
     @classmethod
     def get_by_id(cls, reservation_id: int) -> Optional['Reservation']:

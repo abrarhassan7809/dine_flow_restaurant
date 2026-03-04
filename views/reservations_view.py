@@ -424,14 +424,14 @@ class ReservationsView(QWidget):
 
         # Set column widths
         self.table.setColumnWidth(0, 100)  # Time
-        self.table.setColumnWidth(1, 150)  # Customer
-        self.table.setColumnWidth(2, 120)  # Phone
+        self.table.setColumnWidth(1, 120)  # Customer
+        self.table.setColumnWidth(2, 100)  # Phone
         self.table.setColumnWidth(3, 60)  # Party
         self.table.setColumnWidth(4, 80)  # Table
         self.table.setColumnWidth(5, 80)  # Duration
         self.table.setColumnWidth(6, 100)  # Status
-        self.table.setColumnWidth(7, 150)  # Notes
-        self.table.setColumnWidth(8, 120)  # Actions
+        self.table.setColumnWidth(7, 120)  # Notes
+        self.table.setColumnWidth(8, 280)  # Actions
 
         # Set stretch
         header = self.table.horizontalHeader()
@@ -543,7 +543,7 @@ class ReservationsView(QWidget):
 
             # Edit button
             edit_btn = QPushButton("✎")
-            edit_btn.setFixedSize(24, 24)
+            edit_btn.setFixedSize(30, 30)
             edit_btn.setToolTip("Edit reservation")
             edit_btn.setStyleSheet(f"""
                 QPushButton {{
@@ -571,7 +571,7 @@ class ReservationsView(QWidget):
             ]:
                 if res_dict['status'] != status.lower():
                     btn = QPushButton(icon)
-                    btn.setFixedSize(24, 24)
+                    btn.setFixedSize(70, 30)
                     btn.setToolTip(f"Mark as {status}")
                     btn.setStyleSheet(f"""
                         QPushButton {{
@@ -596,7 +596,7 @@ class ReservationsView(QWidget):
             self.table.setCellWidget(row, 8, actions_widget)
 
             # Set row height
-            self.table.setRowHeight(row, 32)
+            self.table.setRowHeight(row, 50)
 
     def _highlight_dates(self):
         """Highlight dates that have reservations on the calendar"""

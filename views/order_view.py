@@ -487,6 +487,23 @@ class OrderView(QWidget):
         self.cart_table.setRowCount(0)
         self.cart_table.setRowCount(len(self.cart_items))
 
+        # Enable horizontal scrolling with fixed column widths
+        self.cart_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        # Keep fixed column widths but allow scrolling
+        header = self.cart_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.Fixed)
+        header.setStretchLastSection(False)
+
+        # Set column widths
+        self.cart_table.setColumnWidth(0, 150)
+        self.cart_table.setColumnWidth(1, 100)
+        self.cart_table.setColumnWidth(2, 100)
+        self.cart_table.setColumnWidth(3, 60)
+
         for row, item in enumerate(self.cart_items):
             # Col 0 — name
             n = QTableWidgetItem(item["name"])
@@ -575,7 +592,7 @@ class OrderView(QWidget):
             self.cart_table.setCellWidget(row, 3, del_w)
 
             # BUG G FIX: explicit row height so qty buttons are fully visible
-            self.cart_table.setRowHeight(row, 40)
+            self.cart_table.setRowHeight(row, 50)
 
         self._update_totals()
 

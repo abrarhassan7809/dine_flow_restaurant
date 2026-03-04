@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                                QStackedWidget, QFrame, QPushButton, QLabel,
-                               QStatusBar, QApplication, QScrollArea, QSizePolicy)
+                               QStatusBar, QApplication, QScrollArea, QSizePolicy,
+                               QMessageBox)
 from PySide6.QtCore import Qt, QTimer, QDateTime
 from PySide6.QtGui import QResizeEvent
 from views.floor_view import FloorView
@@ -12,6 +13,8 @@ from views.menu_manager import MenuManager
 from views.reservations_view import ReservationsView
 from views.staff_view import StaffView
 from views.table_manager import TableManager
+from views.login_view import LoginView
+from views.change_pin_dialog import ChangePinDialog
 from utils.constants import *
 
 
@@ -19,21 +22,49 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("🍽 Restaurant Management System")
+        self.current_user = None
 
         screen = QApplication.primaryScreen().availableGeometry()
         self.setMinimumSize(900, 620)
         w = min(int(screen.width() * 0.85), 1400)
         h = min(int(screen.height() * 0.88), 950)
-        x = screen.x() + (screen.width()  - w) // 2
+        x = screen.x() + (screen.width() - w) // 2
         y = screen.y() + (screen.height() - h) // 2
         self.setGeometry(x, y, w, h)
 
-        self._build()
-        self._setup_auto_refresh()
+        # Start with login screen
+        self._show_login()
 
-    # ── Build ──────────────────────────────────────────────────────────────────
+    def _show_login(self):
+        """Show the login screen"""
+        self.login_view = LoginView()
+        self.login_view.login_successful.connect(self._on_login_success)
+        self.setCentralWidget(self.login_view)
 
-    def _build(self):
+    def _on_login_success(self, user_data):
+        """Handle successful login"""
+        self.current_user = user_data
+        self._build_main_interface()
+
+        # Check if this is first login (default PIN)
+        if user_data['pin_code'] == '1234' and user_data['role'] == 'admin':
+            QTimer.singleShot(1000, self._prompt_change_pin)
+
+    def _prompt_change_pin(self):
+        """Prompt user to change default PIN"""
+        reply = QMessageBox.question(
+            self,
+            "Security Alert",
+            "You are using the default PIN. For security reasons, you should change it immediately.\n\nWould you like to change your PIN now?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            dialog = ChangePinDialog(self.current_user['id'], self)
+            dialog.exec()
+
+    def _build_main_interface(self):
+        """Build the main application interface"""
         central = QWidget()
         self.setCentralWidget(central)
 
@@ -41,7 +72,6 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # BUG C FIX: plain fixed-width sidebar, no QSplitter fighting min/max
         self.sidebar = self._create_sidebar()
         root.addWidget(self.sidebar)
 
@@ -49,18 +79,17 @@ class MainWindow(QMainWindow):
         self.content_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         root.addWidget(self.content_stack, 1)
 
-        # BUG E FIX: _init_views BEFORE _connect_signals so self.views exists
         self._init_views()
         self._create_status_bar()
         self._connect_signals()
 
         self.nav_buttons[0].setChecked(True)
-
-    # ── Sidebar ────────────────────────────────────────────────────────────────
+        self._update_user_info()
 
     def _create_sidebar(self):
+        """Create the sidebar with user info"""
         sidebar = QFrame()
-        sidebar.setFixedWidth(SIDEBAR_WIDTH)   # BUG C FIX: single width constraint
+        sidebar.setFixedWidth(SIDEBAR_WIDTH)
         sidebar.setStyleSheet(f"""
             QFrame {{
                 background: {SURFACE};
@@ -89,7 +118,7 @@ class MainWindow(QMainWindow):
         h_lay.addWidget(self.subtitle)
         outer.addWidget(header)
 
-        # Scrollable nav so items are never clipped on short screens
+        # Scrollable nav
         nav_scroll = QScrollArea()
         nav_scroll.setWidgetResizable(True)
         nav_scroll.setFrameShape(QFrame.NoFrame)
@@ -104,7 +133,6 @@ class MainWindow(QMainWindow):
 
         self.nav_buttons = []
 
-        # BUG D FIX: keep full labels in a separate list; never mangle btn text
         self._nav_items = [
             ("🏠", "Floor Plan"),
             ("📝", "New Order"),
@@ -149,28 +177,69 @@ class MainWindow(QMainWindow):
         nav_scroll.setWidget(nav_container)
         outer.addWidget(nav_scroll, 1)
 
-        # User section
+        # User section with logout button
         user_frame = QFrame()
-        user_frame.setFixedHeight(68)
+        user_frame.setFixedHeight(90)
         user_frame.setStyleSheet(f"border-top: 1px solid {BORDER};")
         u_lay = QVBoxLayout(user_frame)
         u_lay.setContentsMargins(16, 10, 16, 10)
         u_lay.setSpacing(2)
 
-        self.user_name = QLabel("John Doe")
+        self.user_name = QLabel("")
         self.user_name.setStyleSheet(f"color: {TEXT}; font-weight: 600; font-size: 13px;")
         u_lay.addWidget(self.user_name)
 
-        self.user_role = QLabel("Manager")
+        self.user_role = QLabel("")
         self.user_role.setStyleSheet(f"color: {TEXT2}; font-size: 11px;")
         u_lay.addWidget(self.user_role)
+
+        # Logout button
+        logout_btn = QPushButton("🚪 Logout")
+        logout_btn.setFixedHeight(30)
+        logout_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {RED};
+                border: 1px solid {RED}55;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                margin-top: 5px;
+            }}
+            QPushButton:hover {{
+                background: {RED};
+                color: white;
+            }}
+        """)
+        logout_btn.clicked.connect(self._logout)
+        u_lay.addWidget(logout_btn)
+
         outer.addWidget(user_frame)
 
         return sidebar
 
-    # ── Views ──────────────────────────────────────────────────────────────────
+    def _update_user_info(self):
+        """Update user information in sidebar"""
+        if self.current_user:
+            self.user_name.setText(self.current_user['name'])
+            role = self.current_user['role'].capitalize()
+            self.user_role.setText(role)
+
+    def _logout(self):
+        """Log out current user"""
+        reply = QMessageBox.question(
+            self,
+            "Logout",
+            "Are you sure you want to logout?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.current_user = None
+            self._show_login()
 
     def _init_views(self):
+        """Initialize all views"""
         self.views = {
             0: FloorView(),
             1: OrderView(),
@@ -185,25 +254,8 @@ class MainWindow(QMainWindow):
         for view in self.views.values():
             self.content_stack.addWidget(view)
 
-    def _placeholder(self, title: str) -> QWidget:
-        w = QWidget()
-        w.setStyleSheet(f"background: {DARK};")
-        lay = QVBoxLayout(w)
-        lay.setAlignment(Qt.AlignCenter)
-        lbl = QLabel(title)
-        lbl.setStyleSheet(f"color: {TEXT}; font-size: 22px; font-weight: 700;")
-        lbl.setAlignment(Qt.AlignCenter)
-        lay.addWidget(lbl)
-        sub = QLabel("Coming Soon")
-        sub.setStyleSheet(f"color: {TEXT2}; font-size: 14px; margin-top: 6px;")
-        sub.setAlignment(Qt.AlignCenter)
-        lay.addWidget(sub)
-        return w
-
-    # ── Status bar ─────────────────────────────────────────────────────────────
-
     def _create_status_bar(self):
-        # BUG B FIX: static 30 px — no dynamic recalculation on every resize
+        """Create status bar"""
         self.status_bar = QStatusBar()
         self.status_bar.setFixedHeight(30)
         self.status_bar.setStyleSheet(f"""
@@ -234,29 +286,28 @@ class MainWindow(QMainWindow):
         self.clock_label.setStyleSheet(f"color: {TEXT2}; padding: 0 8px;")
         self.status_bar.addPermanentWidget(self.clock_label)
 
+        # Setup clock
+        self._clock_timer = QTimer(self)
+        self._clock_timer.timeout.connect(self._update_clock)
+        self._clock_timer.start(1000)
+        self._update_clock()
+
     def _vsep(self) -> QFrame:
+        """Create vertical separator"""
         sep = QFrame()
         sep.setFrameShape(QFrame.VLine)
         sep.setFixedWidth(1)
         sep.setStyleSheet(f"background: {BORDER};")
         return sep
 
-    # ── Auto-refresh clock ─────────────────────────────────────────────────────
-
-    def _setup_auto_refresh(self):
-        self._clock_timer = QTimer(self)
-        self._clock_timer.timeout.connect(self._update_clock)
-        self._clock_timer.start(1000)
-        self._update_clock()
-
     def _update_clock(self):
+        """Update clock display"""
         self.clock_label.setText(
             QDateTime.currentDateTime().toString("ddd, MMM d yyyy  •  h:mm:ss AP")
         )
 
-    # ── Navigation ─────────────────────────────────────────────────────────────
-
     def _navigate(self, index: int):
+        """Navigate to different views"""
         for i, btn in enumerate(self.nav_buttons):
             btn.setChecked(i == index)
         self.content_stack.setCurrentIndex(index)
@@ -269,6 +320,7 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"Viewing: {icon} {label}")
 
     def _connect_signals(self):
+        """Connect signals between views"""
         # Floor → order
         if hasattr(self.views[0], "table_selected"):
             self.views[0].table_selected.connect(self._open_order)
@@ -284,11 +336,10 @@ class MainWindow(QMainWindow):
             self.views[5].tables_updated.connect(self.views[0].refresh)
 
     def _open_order(self, table_id: int):
+        """Open order view for specific table"""
         self._navigate(1)
         self.views[1].load_table(table_id)
 
-    # BUG A FIX: eventFilter + handle_resize removed entirely.
-    # The sidebar is fixed-width so there is nothing to do on resize.
-    # resizeEvent is kept as a clean no-op override for future use.
     def resizeEvent(self, event: QResizeEvent):
+        """Handle resize events"""
         super().resizeEvent(event)

@@ -491,6 +491,12 @@ class StaffView(QWidget):
         add_btn.clicked.connect(self._add_staff)
         header.addWidget(add_btn)
 
+        # Change PIN button
+        change_pin_btn = GhostButton("🔑 Change PIN")
+        change_pin_btn.setFixedHeight(36)
+        change_pin_btn.clicked.connect(self._change_pin)
+        header.addWidget(change_pin_btn)
+
         refresh_btn = GhostButton("🔄 Refresh")
         refresh_btn.setFixedHeight(36)
         refresh_btn.clicked.connect(self.refresh)
@@ -533,10 +539,10 @@ class StaffView(QWidget):
         self.staff_table.setColumnWidth(0, 150)  # Name
         self.staff_table.setColumnWidth(1, 100)  # Role
         self.staff_table.setColumnWidth(2, 60)  # PIN
-        self.staff_table.setColumnWidth(3, 180)  # Email
-        self.staff_table.setColumnWidth(4, 120)  # Phone
+        self.staff_table.setColumnWidth(3, 150)  # Email
+        self.staff_table.setColumnWidth(4, 150)  # Phone
         self.staff_table.setColumnWidth(5, 80)  # Status
-        self.staff_table.setColumnWidth(6, 120)  # Actions
+        self.staff_table.setColumnWidth(6, 100)  # Actions
 
         # Set stretch
         header = self.staff_table.horizontalHeader()
@@ -553,6 +559,21 @@ class StaffView(QWidget):
         layout.addWidget(self.staff_table)
 
         return widget
+
+    def _change_pin(self):
+        """Open change PIN dialog for current user"""
+        from views.change_pin_dialog import ChangePinDialog
+
+        # Get current user ID from main window
+        main_window = self.window()
+        if hasattr(main_window, 'current_user') and main_window.current_user:
+            user_name = main_window.current_user.get('name', 'User')
+            dialog = ChangePinDialog(main_window.current_user['id'], user_name, self)
+            if dialog.exec():
+                # Optional: Show success message or refresh
+                QMessageBox.information(self, "Success", "Your PIN has been changed successfully!")
+        else:
+            QMessageBox.warning(self, "Error", "No user logged in")
 
     def _create_shifts_tab(self):
         """Create the shifts history tab"""
@@ -606,14 +627,14 @@ class StaffView(QWidget):
         ])
 
         # Set column widths
-        self.shifts_table.setColumnWidth(0, 150)  # Staff
+        self.shifts_table.setColumnWidth(0, 200)  # Staff
         self.shifts_table.setColumnWidth(1, 100)  # Role
         self.shifts_table.setColumnWidth(2, 150)  # Start Time
         self.shifts_table.setColumnWidth(3, 150)  # End Time
-        self.shifts_table.setColumnWidth(4, 100)  # Cash Float
+        self.shifts_table.setColumnWidth(4, 120)  # Cash Float
         self.shifts_table.setColumnWidth(5, 100)  # Cash Sales
         self.shifts_table.setColumnWidth(6, 100)  # Card Sales
-        self.shifts_table.setColumnWidth(7, 100)  # Total
+        self.shifts_table.setColumnWidth(7, 150)  # Total
 
         # Set stretch
         header = self.shifts_table.horizontalHeader()
@@ -713,7 +734,7 @@ class StaffView(QWidget):
 
             # Edit button
             edit_btn = QPushButton("✎")
-            edit_btn.setFixedSize(24, 24)
+            edit_btn.setFixedSize(30, 30)
             edit_btn.setToolTip("Edit staff")
             edit_btn.setStyleSheet(f"""
                 QPushButton {{
@@ -738,7 +759,7 @@ class StaffView(QWidget):
             toggle_text = "✓" if is_active else "✗"
             toggle_color = GREEN if is_active else RED
             toggle_btn = QPushButton(toggle_text)
-            toggle_btn.setFixedSize(24, 24)
+            toggle_btn.setFixedSize(30, 30)
             toggle_btn.setToolTip("Deactivate" if is_active else "Activate")
             toggle_btn.setStyleSheet(f"""
                 QPushButton {{

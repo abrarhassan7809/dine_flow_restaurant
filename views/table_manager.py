@@ -186,7 +186,7 @@ class TableManager(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)  # Actions (fixed width)
 
         # Set fixed width for actions column
-        self.table.setColumnWidth(6, 230)
+        self.table.setColumnWidth(6, 300)
 
         self.table.setStyleSheet(table_style())
         self.table.verticalHeader().setVisible(False)
@@ -290,16 +290,16 @@ class TableManager(QWidget):
 
             # Status quick buttons (only 3 most important ones to save space)
             status_buttons = [
-                ("A", GREEN),
-                ("R", BLUE),
-                ("C", YELLOW)
+                ("available", GREEN),
+                ("reserved", BLUE),
+                ("cleaning", YELLOW)
             ]
 
             for status, color in status_buttons:
                 btn = QPushButton(status.capitalize())
                 btn.setFixedHeight(28)
-                btn.setMinimumWidth(30)  # Set minimum width for each button
-                btn.setMaximumWidth(50)  # Set maximum width to prevent stretching
+                btn.setMinimumWidth(40)
+                btn.setMaximumWidth(60)
                 btn.setStyleSheet(f"""
                     QPushButton {{
                         background: {color}22;
