@@ -36,6 +36,7 @@ YELLOW   = "#F39C12"
 TEXT     = "#E8EAF0"
 TEXT2    = "#9BA3C0"
 WHITE    = "#FFFFFF"
+ORANGE   = "#E67E22"
 
 # BUG M FIX: STATUS_COLORS was used in table_manager / floor_view but never defined
 # in constants — it was imported via `from utils.constants import *` so it must live here.

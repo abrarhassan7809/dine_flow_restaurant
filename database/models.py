@@ -100,6 +100,8 @@ class Order:
     delivery_address: Optional[str]
     estimated_prep_time: int
     actual_prep_time: int
+    created_by: Optional[int] = None
+    updated_by: Optional[int] = None
 
     @classmethod
     def create(cls, table_id: int, waiter: str = "", customer_count: int = 1) -> 'Order':
@@ -225,10 +227,12 @@ class Bill:
     is_paid: bool
     payment_reference: Optional[str]
     printed: bool
+    created_by: Optional[int] = None
 
     @classmethod
     def generate(cls, order_id: int, payment_method: str = "cash",
-                 amount_paid: float = 0, tip: float = 0) -> 'Bill':
+                 amount_paid: float = 0, tip: float = 0, created_by: int = None) -> 'Bill':
+        """Generate a bill for an order"""
         conn = get_db()
         order = Order.get_by_id(order_id)
         if not order:
@@ -259,18 +263,39 @@ class Bill:
 
             bill_number = f"B{date_str}{seq_num:04d}"
 
-            # Insert the bill
+            # Insert the bill with created_by if available
             c = conn.cursor()
-            c.execute("""
-                      INSERT INTO bills (order_id, bill_number, payment_method, amount_paid,
-                                         change_given, tip_amount, is_paid)
-                      VALUES (?, ?, ?, ?, ?, ?, 1)
-                      """, (order_id, bill_number, payment_method, amount_paid, change, tip))
+            if created_by:
+                c.execute("""
+                          INSERT INTO bills (order_id, bill_number, payment_method, amount_paid,
+                                             change_given, tip_amount, is_paid, created_by)
+                          VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                          """, (order_id, bill_number, payment_method, amount_paid, change, tip, created_by))
+            else:
+                c.execute("""
+                          INSERT INTO bills (order_id, bill_number, payment_method, amount_paid,
+                                             change_given, tip_amount, is_paid)
+                          VALUES (?, ?, ?, ?, ?, ?, 1)
+                          """, (order_id, bill_number, payment_method, amount_paid, change, tip))
 
             bill_id = c.lastrowid
 
-            # Update order status
-            conn.execute("UPDATE orders SET status = 'paid' WHERE id = ?", (order_id,))
+            # Update order status with updated_by if available
+            if created_by:
+                conn.execute("""
+                             UPDATE orders
+                             SET status     = 'paid',
+                                 updated_at = CURRENT_TIMESTAMP,
+                                 updated_by = ?
+                             WHERE id = ?
+                             """, (created_by, order_id))
+            else:
+                conn.execute("""
+                             UPDATE orders
+                             SET status     = 'paid',
+                                 updated_at = CURRENT_TIMESTAMP
+                             WHERE id = ?
+                             """, (order_id,))
 
             # Update table status
             if not order.is_takeaway:
@@ -281,14 +306,13 @@ class Bill:
                              """, (order_id,))
 
             conn.commit()
-            conn.close()
-
             return cls.get_by_id(bill_id)
 
         except Exception as e:
             conn.rollback()
-            conn.close()
             raise e
+        finally:
+            conn.close()
 
     @classmethod
     def get_by_id(cls, bill_id: int) -> Optional['Bill']:

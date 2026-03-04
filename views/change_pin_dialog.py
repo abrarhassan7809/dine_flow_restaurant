@@ -15,7 +15,7 @@ class ChangePinDialog(QDialog):
         self.user_id = user_id
         self.user_name = user_name
         self.setWindowTitle("Change PIN")
-        self.setMinimumSize(400, 350)  # Increased size
+        self.setMinimumSize(400, 350)
         self.setStyleSheet(f"""
             QDialog {{
                 background: {SURFACE};

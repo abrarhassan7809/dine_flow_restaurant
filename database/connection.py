@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 from datetime import datetime
@@ -81,7 +82,9 @@ def init_db():
                         is_takeaway INTEGER DEFAULT 0,
                         delivery_address TEXT,
                         estimated_prep_time INTEGER DEFAULT 0,
-                        actual_prep_time INTEGER DEFAULT 0
+                        actual_prep_time INTEGER DEFAULT 0,
+                        created_by INTEGER REFERENCES staff(id),
+                        updated_by INTEGER REFERENCES staff(id)
                         );
 
                     -- Order items
@@ -136,7 +139,8 @@ def init_db():
                         tip_amount REAL DEFAULT 0,
                         is_paid INTEGER DEFAULT 0,
                         payment_reference TEXT,
-                        printed INTEGER DEFAULT 0
+                        printed INTEGER DEFAULT 0,
+                        created_by INTEGER REFERENCES staff(id)
                         );
 
                     -- Inventory
@@ -146,7 +150,8 @@ def init_db():
                         quantity REAL DEFAULT 0,
                         unit TEXT DEFAULT 'pcs',
                         reorder_level REAL DEFAULT 10,
-                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_by INTEGER REFERENCES staff(id)
                         );
 
                     -- Staff
@@ -158,8 +163,9 @@ def init_db():
                                                          email TEXT,
                                                          phone TEXT,
                                                          is_active INTEGER DEFAULT 1,
-                                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    );
+                                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                                         created_by INTEGER REFERENCES staff(id)
+                        );
 
                     -- Shift management
                     CREATE TABLE IF NOT EXISTS shifts (
@@ -185,20 +191,35 @@ def init_db():
                         duration INTEGER DEFAULT 120,
                         status TEXT DEFAULT 'confirmed',
                         special_requests TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        created_by INTEGER REFERENCES staff(id),
+                        updated_by INTEGER REFERENCES staff(id)
                         );
 
-                    -- Audit log
+                    -- Enhanced Audit log for tracking all user actions
                     CREATE TABLE IF NOT EXISTS audit_log (
                                                              id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                                             user TEXT,
-                                                             action TEXT,
-                                                             table_name TEXT,
-                                                             record_id INTEGER,
-                                                             old_value TEXT,
-                                                             new_value TEXT,
-                                                             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    );
+                                                             user_id INTEGER REFERENCES staff(id),
+                        user_name TEXT,
+                        user_role TEXT,
+                        action TEXT NOT NULL,  -- INSERT, UPDATE, DELETE, LOGIN, LOGOUT
+                        table_name TEXT NOT NULL,
+                        record_id INTEGER,
+                        old_value TEXT,
+                        new_value TEXT,
+                        ip_address TEXT,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+
+                    -- Login history
+                    CREATE TABLE IF NOT EXISTS login_history (
+                                                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                                                 user_id INTEGER REFERENCES staff(id),
+                        user_name TEXT,
+                        login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        logout_time TIMESTAMP,
+                        ip_address TEXT
+                        );
 
                     -- Indexes for performance
                     CREATE INDEX IF NOT EXISTS idx_orders_table ON orders(table_id, status);
@@ -206,16 +227,16 @@ def init_db():
                     CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
                     CREATE INDEX IF NOT EXISTS idx_reservations_time ON reservations(reservation_time);
                     CREATE INDEX IF NOT EXISTS idx_reservations_table ON reservations(table_id);
+                    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, timestamp);
+                    CREATE INDEX IF NOT EXISTS idx_audit_table ON audit_log(table_name, action);
                     """)
 
     # Check if we need to add position columns to existing tables
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tables'")
     if c.fetchone():
-        # Get existing columns
         c.execute("PRAGMA table_info(tables)")
         columns = [column[1] for column in c.fetchall()]
 
-        # Add missing columns one by one
         if 'x_position' not in columns:
             try:
                 c.execute("ALTER TABLE tables ADD COLUMN x_position INTEGER DEFAULT 0")
@@ -249,6 +270,55 @@ def init_db():
                 c.execute("ALTER TABLE staff ADD COLUMN phone TEXT")
             except sqlite3.OperationalError:
                 pass
+
+        if 'created_by' not in columns:
+            try:
+                c.execute("ALTER TABLE staff ADD COLUMN created_by INTEGER REFERENCES staff(id)")
+            except sqlite3.OperationalError:
+                pass
+
+    # Create default admin if none exists
+    c.execute("SELECT COUNT(*) FROM staff WHERE role = 'admin'")
+    if c.fetchone()[0] == 0:
+        # Create default admin user
+        default_admin = {
+            'name': 'Administrator',
+            'role': 'admin',
+            'pin_code': '1234',
+            'email': 'admin@restaurant.com',
+            'phone': '555-0001',
+            'is_active': 1
+        }
+
+        c.execute("""
+                  INSERT INTO staff (name, role, pin_code, email, phone, is_active)
+                  VALUES (?, ?, ?, ?, ?, ?)
+                  """, (
+                      default_admin['name'],
+                      default_admin['role'],
+                      default_admin['pin_code'],
+                      default_admin['email'],
+                      default_admin['phone'],
+                      default_admin['is_active']
+                  ))
+
+        admin_id = c.lastrowid
+
+        # Log admin creation
+        c.execute("""
+                  INSERT INTO audit_log (user_id, user_name, user_role, action, table_name, record_id, new_value)
+                  VALUES (?, ?, ?, ?, ?, ?, ?)
+                  """, (
+                      admin_id,
+                      default_admin['name'],
+                      'admin',
+                      'CREATE',
+                      'staff',
+                      admin_id,
+                      json.dumps(default_admin)
+                  ))
+
+        print("✅ Default admin user created with PIN: 1234")
 
     conn.commit()
     conn.close()

@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QDoubleSpinBox, QTabWidget, QMessageBox,
                                QComboBox, QLineEdit, QSpinBox, QSizePolicy,
                                QAbstractItemView, QApplication)
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QColor
 from widgets.buttons import AccentButton, GhostButton, DangerButton
 from widgets.cards import MenuItemRow
@@ -23,10 +23,21 @@ class OrderView(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.table_id  = None
-        self.order_id  = None
+        self.table_id = None
+        self.order_id = None
         self.cart_items = []
         self._build()
+
+        # Set up a timer to check for updates when view becomes visible
+        self.update_timer = QTimer()
+        self.update_timer.setSingleShot(True)
+        self.update_timer.timeout.connect(self._refresh_menu)
+
+    def showEvent(self, event):
+        """Called when the widget is shown"""
+        super().showEvent(event)
+        # Refresh menu when view becomes visible
+        self.update_timer.start(100)
 
     # ── Build ──────────────────────────────────────────────────────────────────
 
@@ -38,8 +49,7 @@ class OrderView(QWidget):
         # Left — menu browser
         root.addWidget(self._create_menu_panel(), 3)
 
-        # BUG F FIX: right panel wrapped in QScrollArea so nothing is clipped
-        # on short screens (laptops).
+        # Right panel wrapped in QScrollArea
         order_scroll = QScrollArea()
         order_scroll.setWidgetResizable(True)
         order_scroll.setFixedWidth(420)
@@ -91,6 +101,12 @@ class OrderView(QWidget):
         hdr.addWidget(self.search_input)
         layout.addLayout(hdr)
 
+        # Refresh button for menu
+        refresh_btn = GhostButton("🔄 Refresh Menu")
+        refresh_btn.setFixedHeight(36)
+        refresh_btn.clicked.connect(self._refresh_menu)
+        hdr.addWidget(refresh_btn)
+
         self.category_tabs = QTabWidget()
         self.category_tabs.setStyleSheet(f"""
             QTabWidget::pane {{
@@ -122,7 +138,21 @@ class OrderView(QWidget):
         layout.addWidget(self.category_tabs, 1)
         return panel
 
+    def _refresh_menu(self):
+        """Refresh the menu display"""
+        # Clear all tabs
+        while self.category_tabs.count():
+            self.category_tabs.removeTab(0)
+
+        # Reload categories
+        self._load_menu_categories()
+
+        # Restore search filter
+        if hasattr(self, 'search_input') and self.search_input.text():
+            self._filter_menu(self.search_input.text())
+
     def _load_menu_categories(self):
+        """Load menu categories and items from database"""
         conn = get_db()
         categories = conn.execute(
             "SELECT * FROM menu_categories WHERE is_active=1 ORDER BY sort_order"
@@ -144,10 +174,17 @@ class OrderView(QWidget):
                 (cat["id"],)
             ).fetchall()
 
-            for item in items:
-                row = MenuItemRow(item["id"], item["name"], item["description"], item["price"])
-                row.add_clicked.connect(self._add_to_cart)
-                vbox.addWidget(row)
+            if items:
+                for item in items:
+                    row = MenuItemRow(item["id"], item["name"], item["description"], item["price"])
+                    row.add_clicked.connect(self._add_to_cart)
+                    vbox.addWidget(row)
+            else:
+                # Show empty message
+                empty_label = QLabel("No items available in this category")
+                empty_label.setStyleSheet(f"color: {TEXT2}; font-size: 12px; padding: 20px;")
+                empty_label.setAlignment(Qt.AlignCenter)
+                vbox.addWidget(empty_label)
 
             vbox.addStretch()
             scroll.setWidget(container)
@@ -155,18 +192,32 @@ class OrderView(QWidget):
 
         conn.close()
 
+        # Process events to ensure UI updates
+        QApplication.processEvents()
+
     def _filter_menu(self, text: str):
         text = text.lower()
         for i in range(self.category_tabs.count()):
-            tab = self.category_tabs.widget(i)   # QScrollArea
-            # BUG (filter fix): use isinstance check, not hasattr
+            tab = self.category_tabs.widget(i)  # QScrollArea
             if not isinstance(tab, QScrollArea):
                 continue
             container = tab.widget()
             if not container:
                 continue
+
+            # Count visible items in this category
+            visible_count = 0
             for child in container.findChildren(MenuItemRow):
-                child.setVisible(not text or text in child.item_name.lower())
+                visible = not text or text in child.item_name.lower()
+                child.setVisible(visible)
+                if visible:
+                    visible_count += 1
+
+            # Show/hide empty message if needed
+            empty_labels = container.findChildren(QLabel)
+            for label in empty_labels:
+                if "No items available" in label.text():
+                    label.setVisible(visible_count == 0)
 
     # ── Order panel ────────────────────────────────────────────────────────────
 
@@ -250,7 +301,7 @@ class OrderView(QWidget):
         )
         layout.addWidget(ch)
 
-        # BUG G FIX: cart table given explicit min/max height so rows are visible
+        # Cart table
         self.cart_table = QTableWidget(0, 4)
         self.cart_table.setHorizontalHeaderLabels(["Item", "Qty", "Price", ""])
         self.cart_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
@@ -294,8 +345,8 @@ class OrderView(QWidget):
         tb.setSpacing(6)
 
         self.subtotal_label = self._totals_row(tb, "Subtotal")
-        self.tax_label      = self._totals_row(tb, f"Tax ({int(TAX_RATE*100)}%)")
-        self.service_label  = self._totals_row(tb, f"Service ({int(SERVICE_CHARGE_RATE*100)}%)")
+        self.tax_label = self._totals_row(tb, f"Tax ({int(TAX_RATE * 100)}%)")
+        self.service_label = self._totals_row(tb, f"Service ({int(SERVICE_CHARGE_RATE * 100)}%)")
 
         disc_row = QHBoxLayout()
         disc_lbl = QLabel("Discount:")
@@ -420,24 +471,24 @@ class OrderView(QWidget):
             self.waiter_input.setText(order["waiter"] or "")
             self.notes_input.setPlainText(order["notes"] or "")
             self.customer_count.setValue(order["customer_count"] or 1)
-            # BUG I FIX: cast int → bool so setChecked works correctly
             self.takeaway_check.setChecked(bool(order["is_takeaway"]))
             self.discount_input.setValue(float(order["discount"] or 0))
 
             items = conn.execute(
-                """SELECT oi.*, mi.name FROM order_items oi
-                   JOIN menu_items mi ON oi.menu_item_id=mi.id
-                   WHERE oi.order_id=?""",
+                """SELECT oi.*, mi.name
+                   FROM order_items oi
+                            JOIN menu_items mi ON oi.menu_item_id = mi.id
+                   WHERE oi.order_id = ?""",
                 (self.order_id,)
             ).fetchall()
 
             for it in items:
                 self.cart_items.append({
                     "item_id": it["menu_item_id"],
-                    "name":    it["name"],
-                    "price":   float(it["unit_price"]),
-                    "qty":     it["quantity"],
-                    "notes":   it["notes"] or "",
+                    "name": it["name"],
+                    "price": float(it["unit_price"]),
+                    "qty": it["quantity"],
+                    "notes": it["notes"] or "",
                 })
         else:
             self.order_id = None
@@ -510,7 +561,7 @@ class OrderView(QWidget):
             n.setForeground(QColor(TEXT))
             self.cart_table.setItem(row, 0, n)
 
-            # Col 1 — qty widget (BUG G FIX: row height set to 40 so widget fits)
+            # Col 1 — qty widget
             qty_w = QWidget()
             qty_w.setStyleSheet("background: transparent;")
             qty_lay = QHBoxLayout(qty_w)
@@ -567,7 +618,7 @@ class OrderView(QWidget):
             p.setForeground(QColor(TEXT))
             self.cart_table.setItem(row, 2, p)
 
-            # Col 3 — delete  (BUG H FIX: wrap in a container with transparent bg)
+            # Col 3 — delete
             del_w = QWidget()
             del_w.setStyleSheet("background: transparent;")
             del_lay = QHBoxLayout(del_w)
@@ -591,17 +642,17 @@ class OrderView(QWidget):
             del_lay.addWidget(del_btn)
             self.cart_table.setCellWidget(row, 3, del_w)
 
-            # BUG G FIX: explicit row height so qty buttons are fully visible
+            # Set row height
             self.cart_table.setRowHeight(row, 50)
 
         self._update_totals()
 
     def _update_totals(self):
         subtotal = sum(i["price"] * i["qty"] for i in self.cart_items)
-        tax      = subtotal * TAX_RATE
-        service  = subtotal * SERVICE_CHARGE_RATE
+        tax = subtotal * TAX_RATE
+        service = subtotal * SERVICE_CHARGE_RATE
         discount = self.discount_input.value()
-        total    = max(subtotal + tax + service - discount, 0)
+        total = max(subtotal + tax + service - discount, 0)
 
         self.subtotal_label.setText(format_currency(subtotal))
         self.tax_label.setText(format_currency(tax))
@@ -628,36 +679,44 @@ class OrderView(QWidget):
             return
 
         subtotal = sum(i["price"] * i["qty"] for i in self.cart_items)
-        tax      = subtotal * TAX_RATE
-        service  = subtotal * SERVICE_CHARGE_RATE
+        tax = subtotal * TAX_RATE
+        service = subtotal * SERVICE_CHARGE_RATE
         discount = self.discount_input.value()
-        total    = max(subtotal + tax + service - discount, 0)
-        is_to    = 1 if self.takeaway_check.isChecked() else 0
+        total = max(subtotal + tax + service - discount, 0)
+        is_to = 1 if self.takeaway_check.isChecked() else 0
 
         conn = get_db()
-        c    = conn.cursor()
+        c = conn.cursor()
 
         if self.order_id:
             c.execute("""
-                UPDATE orders
-                SET waiter=?, notes=?, status=?, updated_at=CURRENT_TIMESTAMP,
-                    customer_count=?, is_takeaway=?,
-                    subtotal=?, tax=?, service_charge=?, discount=?, total=?
-                WHERE id=?
-            """, (self.waiter_input.text().strip(), self.notes_input.toPlainText(),
-                  status, self.customer_count.value(), is_to,
-                  subtotal, tax, service, discount, total, self.order_id))
+                      UPDATE orders
+                      SET waiter=?,
+                          notes=?,
+                          status=?,
+                          updated_at=CURRENT_TIMESTAMP,
+                          customer_count=?,
+                          is_takeaway=?,
+                          subtotal=?,
+                          tax=?,
+                          service_charge=?,
+                          discount=?,
+                          total=?
+                      WHERE id = ?
+                      """, (self.waiter_input.text().strip(), self.notes_input.toPlainText(),
+                            status, self.customer_count.value(), is_to,
+                            subtotal, tax, service, discount, total, self.order_id))
             c.execute("DELETE FROM order_items WHERE order_id=?", (self.order_id,))
         else:
             c.execute("""
-                INSERT INTO orders
-                  (table_id, waiter, notes, status, customer_count, is_takeaway,
-                   subtotal, tax, service_charge, discount, total)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)
-            """, (self.table_id, self.waiter_input.text().strip(),
-                  self.notes_input.toPlainText(), status,
-                  self.customer_count.value(), is_to,
-                  subtotal, tax, service, discount, total))
+                      INSERT INTO orders
+                      (table_id, waiter, notes, status, customer_count, is_takeaway,
+                       subtotal, tax, service_charge, discount, total)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      """, (self.table_id, self.waiter_input.text().strip(),
+                            self.notes_input.toPlainText(), status,
+                            self.customer_count.value(), is_to,
+                            subtotal, tax, service, discount, total))
             self.order_id = c.lastrowid
             if not is_to:
                 c.execute("UPDATE tables SET status='occupied' WHERE id=?", (self.table_id,))
@@ -665,10 +724,10 @@ class OrderView(QWidget):
         item_status = "sent" if status in ("sent", "preparing", "ready") else "pending"
         for item in self.cart_items:
             c.execute("""
-                INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, notes, status)
-                VALUES (?,?,?,?,?,?)
-            """, (self.order_id, item["item_id"], item["qty"],
-                  item["price"], item["notes"], item_status))
+                      INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, notes, status)
+                      VALUES (?, ?, ?, ?, ?, ?)
+                      """, (self.order_id, item["item_id"], item["qty"],
+                            item["price"], item["notes"], item_status))
 
         conn.commit()
         conn.close()
@@ -685,17 +744,14 @@ class OrderView(QWidget):
         # Save order if not saved
         if not self.order_id:
             self._save_order("billed")
-            # Small delay to ensure database is updated
             QApplication.processEvents()
             return
 
         conn = None
         try:
             conn = get_db()
-            # Set busy timeout
             conn.execute("PRAGMA busy_timeout = 5000")
 
-            # Get order details with a fresh connection
             order = conn.execute("SELECT * FROM orders WHERE id = ?", (self.order_id,)).fetchone()
             if not order:
                 QMessageBox.critical(self, "Error", "Order not found in database.")
@@ -710,7 +766,6 @@ class OrderView(QWidget):
 
             table = conn.execute("SELECT number FROM tables WHERE id = ?", (self.table_id,)).fetchone()
 
-            # Check if order is already billed/paid
             if order['status'] in ['paid', 'billed']:
                 existing_bill = conn.execute(
                     "SELECT * FROM bills WHERE order_id = ? ORDER BY id DESC LIMIT 1",
@@ -732,16 +787,22 @@ class OrderView(QWidget):
             if conn:
                 conn.close()
 
+        # Get current user ID from main window
+        current_user_id = None
+        main_window = self.window()
+        if hasattr(main_window, 'current_user') and main_window.current_user:
+            current_user_id = main_window.current_user.get('id')
+
         # Show bill dialog
         dialog = BillDialog(
             dict(order),
             [dict(i) for i in items],
             table["number"] if table else "Takeaway",
-            self
+            self,
+            current_user_id
         )
 
         if dialog.exec():
-            # Refresh after successful payment
             self.order_updated.emit()
             self.cart_items.clear()
             self._refresh_cart()

@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QPushButton, QFormLayout, QLineEdit, QComboBox,
                                QSpinBox, QDoubleSpinBox, QTextEdit, QTableWidget,
                                QTableWidgetItem, QHeaderView, QMessageBox,
-                               QDateEdit, QTimeEdit, QGroupBox, QCheckBox, QFrame)
+                               QDateEdit, QTimeEdit, QGroupBox, QCheckBox, QFrame, QApplication)
 from PySide6.QtCore import Qt, QDate, QTime, QDateTime
 from PySide6.QtGui import QFont, QColor
 from widgets.buttons import AccentButton, GhostButton, DangerButton
@@ -81,11 +81,12 @@ class BaseDialog(QDialog):
 class BillDialog(BaseDialog):
     """Dialog for generating and viewing bills"""
 
-    def __init__(self, order, items, table_number, parent=None):
+    def __init__(self, order, items, table_number, parent=None, user_id=None):
         super().__init__("Bill / Receipt", parent)
         self.order = order
         self.items = items
         self.table_number = table_number
+        self.user_id = user_id
         self._build()
 
     def _build(self):
@@ -262,25 +263,85 @@ class BillDialog(BaseDialog):
         self.change_label.setText(format_currency(change))
 
     def _confirm_payment(self):
-        if self.amount_paid.value() < (self.order['total'] + self.tip_amount.value() - 0.01):
-            QMessageBox.warning(self, "Insufficient", "Amount paid is less than total including tip.")
+        """Process payment confirmation"""
+        total_with_tip = self.order['total'] + self.tip_amount.value()
+        amount_paid = self.amount_paid.value()
+
+        total_with_tip = round(total_with_tip, 2)
+        amount_paid = round(amount_paid, 2)
+
+        if amount_paid < total_with_tip - 0.01:
+            shortfall = total_with_tip - amount_paid
+            QMessageBox.warning(
+                self,
+                "Insufficient Payment",
+                f"Amount paid (${amount_paid:.2f}) is less than total including tip (${total_with_tip:.2f}).\n"
+                f"Shortfall: ${shortfall:.2f}\n\n"
+                f"Please enter the full amount or adjust the tip."
+            )
             return
 
+        reply = QMessageBox.question(
+            self,
+            "Confirm Payment",
+            f"Total: {format_currency(self.order['total'])}\n"
+            f"Tip: {format_currency(self.tip_amount.value())}\n"
+            f"Amount Paid: {format_currency(amount_paid)}\n"
+            f"Change: {format_currency(max(amount_paid - total_with_tip, 0))}\n\n"
+            f"Confirm payment?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        pay_btn = self.sender()
+        if pay_btn:
+            pay_btn.setEnabled(False)
+            QApplication.processEvents()
+
         try:
-            bill = Bill.generate(
-                self.order['id'],
-                self.pay_method.currentText(),
-                self.amount_paid.value(),
-                self.tip_amount.value()
-            )
+            # Pass user_id to Bill.generate - note the order of parameters
+            # The method signature is: generate(order_id, payment_method="cash", amount_paid=0, tip=0, created_by=None)
+            if self.user_id:
+                bill = Bill.generate(
+                    self.order['id'],  # order_id
+                    self.pay_method.currentText(),  # payment_method
+                    amount_paid,  # amount_paid
+                    self.tip_amount.value(),  # tip
+                    self.user_id  # created_by
+                )
+            else:
+                bill = Bill.generate(
+                    self.order['id'],  # order_id
+                    self.pay_method.currentText(),  # payment_method
+                    amount_paid,  # amount_paid
+                    self.tip_amount.value()  # tip
+                )
+
             QMessageBox.information(
-                self, "Payment Confirmed",
-                f"Payment successful!\nBill Number: {bill.bill_number}\n"
-                f"Change: {format_currency(bill.change_given)}\nThank you!"
+                self,
+                "Payment Confirmed",
+                f"✅ Payment successful!\n\n"
+                f"Bill Number: {bill.bill_number}\n"
+                f"Total: {format_currency(self.order['total'])}\n"
+                f"Tip: {format_currency(self.tip_amount.value())}\n"
+                f"Amount Paid: {format_currency(amount_paid)}\n"
+                f"Change: {format_currency(bill.change_given)}\n\n"
+                f"Thank you for your payment!"
             )
             self.accept()
+
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to process payment: {str(e)}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to process payment: {str(e)}\n\n"
+                f"Please try again or contact support."
+            )
+        finally:
+            if pay_btn:
+                pay_btn.setEnabled(True)
 
     def _print_bill(self):
         # TODO: Implement actual printing

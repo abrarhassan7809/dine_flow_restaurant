@@ -12,6 +12,7 @@ from widgets.styles import input_style, table_style
 from database.connection import get_db
 from utils.constants import *
 from utils.helpers import format_currency, format_datetime
+from utils.auth import require_permission, Permission
 import hashlib
 
 
@@ -989,14 +990,50 @@ class StaffView(QWidget):
         conn.close()
         self.refresh()
 
+    @require_permission(Permission.EDIT_STAFF)
     def _add_staff(self):
         """Add new staff member"""
         dialog = StaffDialog(self)
         if dialog.exec():
             self.refresh()
+            # Log the action
+            from utils.audit import audit_logger
+            audit_logger.log('CREATE', 'staff', None, None, f"New staff member added")
 
+    @require_permission(Permission.EDIT_STAFF)
     def _edit_staff(self, staff_data):
         """Edit existing staff member"""
         dialog = StaffDialog(self, staff_data)
         if dialog.exec():
             self.refresh()
+            # Log the action
+            from utils.audit import audit_logger
+            audit_logger.log('UPDATE', 'staff', staff_data['id'], staff_data, "Staff updated")
+
+    @require_permission(Permission.DELETE_STAFF)
+    def _toggle_active(self, staff_id, current_status):
+        """Toggle staff active status"""
+        # Only admin can delete/deactivate staff
+        main_window = self.window()
+        if main_window.current_user['role'] != 'admin':
+            QMessageBox.warning(self, "Access Denied", "Only administrators can deactivate staff members")
+            return
+
+        conn = get_db()
+        conn.execute(
+            "UPDATE staff SET is_active = ? WHERE id = ?",
+            (0 if current_status else 1, staff_id)
+        )
+        conn.commit()
+        conn.close()
+        self.refresh()
+
+        # Log the action
+        from utils.audit import audit_logger
+        audit_logger.log(
+            'UPDATE',
+            'staff',
+            staff_id,
+            {'is_active': current_status},
+            {'is_active': 0 if current_status else 1}
+        )

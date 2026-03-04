@@ -1,13 +1,13 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QFrame, QMessageBox,
                                QApplication)
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtGui import QFont, QPixmap, QPalette, QLinearGradient, QColor
 from database.connection import get_db
 from utils.constants import *
+from utils.audit import audit_logger
 from widgets.buttons import AccentButton, GhostButton
 from widgets.styles import input_style
-import hashlib
 
 
 class LoginView(QWidget):
@@ -87,10 +87,10 @@ class LoginView(QWidget):
         container_layout.addWidget(self.error_label)
 
         # Info text
-        info_label = QLabel("Default Admin PIN: 1234")
-        info_label.setStyleSheet(f"color: {TEXT2}; font-size: 10px;")
-        info_label.setAlignment(Qt.AlignCenter)
-        container_layout.addWidget(info_label)
+        # info_label = QLabel("Default Admin PIN: 1234")
+        # info_label.setStyleSheet(f"color: {TEXT2}; font-size: 10px;")
+        # info_label.setAlignment(Qt.AlignCenter)
+        # container_layout.addWidget(info_label)
 
         container_layout.addStretch()
 
@@ -123,13 +123,18 @@ class LoginView(QWidget):
                               AND is_active = 1
                             """, (pin,)).fetchone()
 
-        conn.close()
-
         if user:
             # Successful login
             user_dict = dict(user)
+
+            # Log the login
+            audit_logger.set_user(user_dict)
+            audit_logger.log_login(user_dict)
+
+            conn.close()
             self.login_successful.emit(user_dict)
         else:
+            conn.close()
             self._show_error("Invalid PIN. Please try again.")
 
     def _show_error(self, message):
@@ -140,10 +145,10 @@ class LoginView(QWidget):
         # Simple shake animation
         original_pos = self.error_label.pos()
         self.error_animation.setStartValue(original_pos)
-        self.error_animation.setKeyValueAt(0.2, original_pos + QtCore.QPoint(10, 0))
-        self.error_animation.setKeyValueAt(0.4, original_pos - QtCore.QPoint(10, 0))
-        self.error_animation.setKeyValueAt(0.6, original_pos + QtCore.QPoint(5, 0))
-        self.error_animation.setKeyValueAt(0.8, original_pos - QtCore.QPoint(5, 0))
+        self.error_animation.setKeyValueAt(0.2, original_pos + QPoint(10, 0))
+        self.error_animation.setKeyValueAt(0.4, original_pos - QPoint(10, 0))
+        self.error_animation.setKeyValueAt(0.6, original_pos + QPoint(5, 0))
+        self.error_animation.setKeyValueAt(0.8, original_pos - QPoint(5, 0))
         self.error_animation.setEndValue(original_pos)
         self.error_animation.start()
 
